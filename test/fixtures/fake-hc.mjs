@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createInterface } from "node:readline";
 import { readFileSync, writeFileSync, watch } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 
 const statePath = process.env.FAKE_HC_STATE;
 const state = () => JSON.parse(readFileSync(statePath, "utf8"));
@@ -76,8 +76,29 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   } else if (method === "terminal.kill" || method === "terminal.interrupt") {
     const terminal = data.terminals.find((t) => t.address === params.terminal);
     if (!terminal) return error("not_found");
-    data.actions.push({ method, terminal: params.terminal });
+    const action = { method, terminal: params.terminal };
+    data.actions.push(action);
     if (method === "terminal.kill") {
+      const launch = data.launches.find(
+        (launch) => launch.labels["pi-hc.run"] === terminal.labels["pi-hc.run"],
+      );
+      if (launch) {
+        action.cancelled = JSON.parse(
+          readFileSync(join(launch.env.PI_HC_RUN_DIR, "run.json"), "utf8"),
+        ).cancelled;
+      }
+      if (data.killReply) {
+        save(data);
+        return reply(
+          data.killReply === "live"
+            ? terminal
+            : {
+                ...terminal,
+                state: "finished",
+                labels: { ...terminal.labels, "pi-hc.owner": "somebody-else" },
+              },
+        );
+      }
       terminal.state = "finished";
       terminal.reason = "killed";
       terminal.exit_code = 0;
@@ -85,7 +106,10 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     save(data);
     reply(terminal);
   } else if (method === "echo") reply(params);
-  else if (method === "error") error("fixture_error");
+  else if (method === "coerced-event") {
+    write({ jsonrpc: "2.0", method: ["event"], params: {} });
+    reply({});
+  } else if (method === "error") error("fixture_error");
   else if (method === "malformed") process.stdout.write("not-json\n");
 });
 process.stdin.on("end", () => process.exit(0));

@@ -1,5 +1,20 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
+import type { Config } from "./config.ts";
+
+export function placementLabels(
+  placement: Config["desktop"]["placement"],
+  space: string | undefined,
+  name: string,
+): Record<string, string> {
+  if (placement !== "tabs" || !space) return {};
+  return {
+    "herdr.space": space,
+    "herdr.tab": `pihc-${randomUUID()}`,
+    where: name,
+  };
+}
 
 export async function nameDesktopTab(
   tab: string,

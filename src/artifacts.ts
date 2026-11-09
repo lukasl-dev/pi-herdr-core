@@ -9,16 +9,10 @@ import {
 import { dirname, join } from "node:path";
 import { object } from "./config.ts";
 
-export type Outcome = "completed" | "failed" | "cancelled" | "help";
-export type Thinking =
-  | "off"
-  | "minimal"
-  | "low"
-  | "medium"
-  | "high"
-  | "xhigh"
-  | "max";
-export const thinkingLevels: readonly Thinking[] = [
+const outcomes = ["completed", "failed", "cancelled", "help"] as const;
+export type Outcome = (typeof outcomes)[number];
+
+export const thinkingLevels = [
   "off",
   "minimal",
   "low",
@@ -26,7 +20,8 @@ export const thinkingLevels: readonly Thinking[] = [
   "high",
   "xhigh",
   "max",
-];
+] as const;
+export type Thinking = (typeof thinkingLevels)[number];
 
 export interface ChildResult {
   version: 1;
@@ -35,6 +30,15 @@ export interface ChildResult {
   text: string;
   session: string | null;
 }
+
+const phases = [
+  "starting",
+  "running",
+  "interrupted",
+  "uncertain",
+  "finalizing",
+  "finished",
+] as const;
 
 export interface Run {
   version: 1;
@@ -49,13 +53,7 @@ export interface Run {
   terminal: string | null;
   cancelled: boolean;
   delivered: boolean;
-  phase:
-    | "starting"
-    | "running"
-    | "interrupted"
-    | "uncertain"
-    | "finalizing"
-    | "finished";
+  phase: (typeof phases)[number];
   status: string | null;
   desktopNamed: boolean;
   desktopNote: string | null;
@@ -105,9 +103,7 @@ export function parseResult(value: unknown, id: string): ChildResult {
     !object(value) ||
     value.version !== 1 ||
     value.id !== id ||
-    !["completed", "failed", "cancelled", "help"].includes(
-      String(value.outcome),
-    ) ||
+    !outcomes.some((outcome) => outcome === value.outcome) ||
     typeof value.text !== "string" ||
     !(value.session === null || typeof value.session === "string")
   ) {
@@ -125,19 +121,12 @@ export function parseRun(value: unknown, owner: string, id: string): Run {
     !["name", "taskName", "cwd", "model"].every(
       (k) => typeof value[k] === "string",
     ) ||
-    !thinkingLevels.includes(value.thinking as Thinking) ||
+    !thinkingLevels.some((level) => level === value.thinking) ||
     typeof value.created !== "number" ||
     !(value.terminal === null || typeof value.terminal === "string") ||
     typeof value.cancelled !== "boolean" ||
     typeof value.delivered !== "boolean" ||
-    ![
-      "starting",
-      "running",
-      "interrupted",
-      "uncertain",
-      "finalizing",
-      "finished",
-    ].includes(String(value.phase)) ||
+    !phases.some((phase) => phase === value.phase) ||
     !(value.status === null || typeof value.status === "string") ||
     typeof value.desktopNamed !== "boolean" ||
     !(

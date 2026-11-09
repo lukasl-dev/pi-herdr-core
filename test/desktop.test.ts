@@ -9,7 +9,18 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { nameDesktopTab } from "../src/desktop.ts";
+import { nameDesktopTab, placementLabels } from "../src/desktop.ts";
+
+test("desktop placement allocates distinct tabs; headless/background stays unlabelled", () => {
+  const first = placementLabels("tabs", "space", "moss-fox");
+  const second = placementLabels("tabs", "space", "calm-wren");
+  assert.equal(first["herdr.space"], "space");
+  assert.equal(first.where, "moss-fox");
+  assert.match(first["herdr.tab"]!, /^pihc-/);
+  assert.notEqual(first["herdr.tab"], second["herdr.tab"]);
+  assert.deepEqual(placementLabels("background", "space", "x"), {});
+  assert.deepEqual(placementLabels("tabs", undefined, "x"), {});
+});
 
 test("tab naming waits for adoption, targets only the allocated tab, and never focuses it", async (t) => {
   const directory = mkdtempSync(join(tmpdir(), "pi-hc-app-test-"));

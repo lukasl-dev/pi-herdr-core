@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseConfig, terminalName, validateName } from "../src/config.ts";
-import { placementLabels } from "../src/host.ts";
-import type { Terminal } from "../src/hc.ts";
 
 test("defaults use short random names and separate desktop tabs", () => {
   const config = parseConfig({});
@@ -64,6 +62,23 @@ test("custom launchers retain their executable and profile arguments", () => {
   );
 });
 
+test("prefixes produce valid names in both naming modes", () => {
+  for (const naming of ["random", "task"] as const) {
+    for (const prefix of ["", "pi-", "0-", "a".repeat(12)]) {
+      const config = parseConfig({ terminal: { naming, prefix } });
+      const name = terminalName(config.terminal, "task", new Set(), () => 0);
+      assert.equal(name, prefix + (naming === "task" ? "task" : "amber-bear"));
+      assert.match(name, /^[a-z0-9][a-z0-9._-]{0,31}$/);
+    }
+    for (const prefix of ["-", "-pi", "a".repeat(13), "Invalid!"]) {
+      assert.throws(
+        () => parseConfig({ terminal: { naming, prefix } }),
+        /terminal.prefix/,
+      );
+    }
+  }
+});
+
 test("configuration rejects misspellings and unsupported grouping instead of silently ignoring them", () => {
   for (const value of [
     null,
@@ -78,35 +93,4 @@ test("configuration rejects misspellings and unsupported grouping instead of sil
   ]) {
     assert.throws(() => parseConfig(value));
   }
-});
-
-test("desktop placement never shares the parent's tab; headless/background stays unlabelled", () => {
-  const parent: Terminal = {
-    address: "tp",
-    name: null,
-    labels: { "herdr.space": "space", "herdr.tab": "parent" },
-    state: "live",
-    status: null,
-    reason: null,
-    exit_code: null,
-    keep: false,
-  };
-  const first = placementLabels(parseConfig({}), parent, "moss-fox");
-  const second = placementLabels(parseConfig({}), parent, "calm-wren");
-  assert.equal(first["herdr.space"], "space");
-  assert.equal(first.where, "moss-fox");
-  assert.notEqual(first["herdr.tab"], "parent");
-  assert.notEqual(first["herdr.tab"], second["herdr.tab"]);
-  assert.deepEqual(
-    placementLabels(
-      parseConfig({ desktop: { placement: "background" } }),
-      parent,
-      "x",
-    ),
-    {},
-  );
-  assert.deepEqual(
-    placementLabels(parseConfig({}), { ...parent, labels: {} }, "x"),
-    {},
-  );
 });

@@ -26,7 +26,7 @@ import {
   type Thinking,
 } from "./artifacts.ts";
 import { Core, CoreError, parseTerminal, type Terminal } from "./hc.ts";
-import { nameDesktopTab } from "./desktop.ts";
+import { nameDesktopTab, placementLabels } from "./desktop.ts";
 
 export interface Launch {
   task: string;
@@ -50,21 +50,6 @@ export interface HostOptions {
 }
 
 const hostLabel = "pi-herdr-core";
-
-export function placementLabels(
-  config: Config,
-  parent: Terminal,
-  name: string,
-): Record<string, string> {
-  const space = parent.labels["herdr.space"];
-  if (config.desktop.placement !== "tabs" || !space) return {};
-  // Never inherit herdr.tab: each child gets its own tab in its parent's space.
-  return {
-    "herdr.space": space,
-    "herdr.tab": `pihc-${randomUUID()}`,
-    where: name,
-  };
-}
 
 export class Host {
   readonly owner: string;
@@ -210,7 +195,11 @@ export class Host {
         "pi-hc.host": hostLabel,
         "pi-hc.owner": this.owner,
         "pi-hc.run": run.id,
-        ...placementLabels(this.options.config, parent, run.name),
+        ...placementLabels(
+          this.options.config.desktop.placement,
+          parent.labels["herdr.space"],
+          run.name,
+        ),
       };
       try {
         let value: unknown;
@@ -270,7 +259,6 @@ export class Host {
         if (!this.#owns(terminal, run))
           throw new Error("hc launch returned mismatched ownership labels");
         run.terminal = terminal.address;
-        run.phase = "starting";
       } catch (error) {
         run.problem = error instanceof Error ? error.message : String(error);
         if (
@@ -323,30 +311,9 @@ export class Host {
       const run = this.#find(target);
       if (run.phase === "finished")
         return { confirmed: true, run: structuredClone(run) };
-      run.cancelled = true;
-      saveRun(this.root, run);
-      try {
-        const terminal = await this.#ownedTerminal(run);
-        const observed = parseTerminal(
-          await this.#requireCore().rpc.request(
-            "terminal.kill",
-            { terminal: terminal.address },
-            10_000,
-          ),
-        );
-        if (!this.#owns(observed, run))
-          throw new Error("hc kill returned mismatched ownership labels");
-        if (observed.state === "finished")
-          this.#finish(run, "cancelled", "Cancelled by parent");
-      } catch (error) {
-        run.problem = `Cancellation unconfirmed: ${error instanceof Error ? error.message : String(error)}`;
-        saveRun(this.root, run);
-      }
+      const confirmed = await this.#cancelRun(run);
       this.#schedule();
-      return {
-        confirmed: this.runs.get(run.id)?.phase === "finished",
-        run: structuredClone(run),
-      };
+      return { confirmed, run: structuredClone(run) };
     });
   }
 
@@ -476,21 +443,7 @@ export class Host {
         run.status = terminal.status?.state ?? null;
         run.problem = null;
         if (run.cancelled && terminal.state === "live") {
-          try {
-            const ended = parseTerminal(
-              await this.#requireCore().rpc.request(
-                "terminal.kill",
-                { terminal: terminal.address },
-                10_000,
-              ),
-            );
-            if (this.#owns(ended, run) && ended.state === "finished") {
-              this.#finish(run, "cancelled", "Cancelled by parent");
-            } else run.problem = "Cancellation not yet confirmed by hc";
-          } catch (error) {
-            run.problem = `Cancellation unconfirmed: ${String(error)}`;
-          }
-          saveRun(this.root, run);
+          await this.#cancelRun(run);
           this.#deliver(run);
           continue;
         }
@@ -563,6 +516,30 @@ export class Host {
     this.options.onChange?.();
   }
 
+  async #cancelRun(run: Run): Promise<boolean> {
+    run.cancelled = true;
+    saveRun(this.root, run);
+    try {
+      const terminal = await this.#ownedTerminal(run);
+      const observed = parseTerminal(
+        await this.#requireCore().rpc.request(
+          "terminal.kill",
+          { terminal: terminal.address },
+          10_000,
+        ),
+      );
+      if (!this.#owns(observed, run))
+        throw new Error("hc kill returned mismatched ownership labels");
+      if (observed.state === "finished")
+        this.#finish(run, "cancelled", "Cancelled by parent");
+      else run.problem = "Cancellation not yet confirmed by hc";
+    } catch (error) {
+      run.problem = `Cancellation unconfirmed: ${error instanceof Error ? error.message : String(error)}`;
+    }
+    saveRun(this.root, run);
+    return run.phase === "finished";
+  }
+
   #finish(run: Run, outcome: ChildResult["outcome"], text: string): void {
     run.phase = "finished";
     run.problem = null;
@@ -573,7 +550,6 @@ export class Host {
       text,
       session: run.result?.session ?? null,
     };
-    saveRun(this.root, run);
   }
 
   #deliver(run: Run): void {

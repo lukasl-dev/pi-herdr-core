@@ -1,8 +1,7 @@
 import { randomInt } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { accessSync, constants, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
-import { accessSync, constants } from "node:fs";
 
 export interface Config {
   terminal: { naming: "random" | "task"; prefix: string };
@@ -43,9 +42,12 @@ export function parseConfig(value: unknown): Config {
   if (naming !== "random" && naming !== "task") {
     throw new Error("terminal.naming must be random or task");
   }
-  if (typeof prefix !== "string" || !/^[a-z0-9-]{0,12}$/.test(prefix)) {
+  if (
+    typeof prefix !== "string" ||
+    !/^(?:[a-z0-9][a-z0-9-]{0,11})?$/.test(prefix)
+  ) {
     throw new Error(
-      "terminal.prefix must be at most 12 lowercase letters, digits or hyphens",
+      "terminal.prefix needs 0–12 lowercase letters, digits or hyphens; nonempty prefixes must start with a letter or digit",
     );
   }
   if (placement !== "tabs" && placement !== "background") {

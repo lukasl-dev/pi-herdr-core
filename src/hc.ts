@@ -25,7 +25,7 @@ export function parseTerminal(value: unknown): Terminal {
   if (
     !object(value) ||
     typeof value.address !== "string" ||
-    !["live", "finished"].includes(String(value.state)) ||
+    !(value.state === "live" || value.state === "finished") ||
     !(value.name === null || typeof value.name === "string") ||
     !object(value.labels) ||
     !Object.values(value.labels).every((v) => typeof v === "string") ||
@@ -151,7 +151,9 @@ export class RpcConnection extends EventEmitter {
               new CoreError("protocol", "hc reply has no result or error"),
             );
         } else if (
-          ["event", "heartbeat", "missed"].includes(String(message.method)) &&
+          (message.method === "event" ||
+            message.method === "heartbeat" ||
+            message.method === "missed") &&
           object(message.params)
         ) {
           this.emit("notification", message as unknown as CoreEvent);
@@ -199,10 +201,10 @@ export class Core extends EventEmitter {
 
   async start(owner: string): Promise<void> {
     const hello = await this.rpc.request("hello", { generation: 1 });
+    const methods =
+      object(hello) && hello.generation === 1 ? hello.methods : undefined;
     if (
-      !object(hello) ||
-      hello.generation !== 1 ||
-      !Array.isArray(hello.methods) ||
+      !Array.isArray(methods) ||
       ![
         "terminal.run",
         "terminal.get",
@@ -210,7 +212,7 @@ export class Core extends EventEmitter {
         "terminal.kill",
         "terminal.interrupt",
         "events.subscribe",
-      ].every((m) => (hello.methods as unknown[]).includes(m))
+      ].every((method) => methods.includes(method))
     ) {
       throw new CoreError(
         "incompatible",

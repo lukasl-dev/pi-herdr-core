@@ -15,7 +15,8 @@ import { Core, type Terminal } from "../src/hc.ts";
 export interface FixtureState {
   terminals: Terminal[];
   launches: Record<string, unknown>[];
-  actions: { method: string; terminal: string }[];
+  actions: { method: string; terminal: string; cancelled?: boolean }[];
+  killReply?: "live" | "foreign";
 }
 
 export function fakeCore(t: TestContext) {

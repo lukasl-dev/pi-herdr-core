@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { EventEmitter, once } from "node:events";
 import { join } from "node:path";
 import test from "node:test";
-import { atomicJson, type ChildResult, type Run } from "../src/artifacts.ts";
+import {
+  atomicJson,
+  parseRun,
+  readJson,
+  type ChildResult,
+  type Run,
+} from "../src/artifacts.ts";
 import { parseConfig } from "../src/config.ts";
 import { Host } from "../src/host.ts";
 import { fakeCore } from "./helpers.ts";
@@ -23,7 +29,14 @@ async function setup(t: Parameters<typeof fakeCore>[0], loseReply = false) {
       ...(loseReply ? { FAKE_HC_LOSE_LAUNCH_REPLY: "1" } : {}),
     },
     onChange: () => events.emit("change"),
-    onResult: (run: Run, result: ChildResult) => {
+    onResult: (run: Run, result: ChildResult, path: string) => {
+      const saved = parseRun(
+        readJson(join(path, "run.json")),
+        run.owner,
+        run.id,
+      );
+      assert.equal(saved.phase, "finished");
+      assert.deepEqual(saved.result, result);
       results.push({ run, result });
       events.emit("result");
     },
@@ -139,6 +152,29 @@ test("ownership mismatch refuses both interrupt and kill", async (t) => {
   const cancelled = await f.host.cancel(run.id);
   assert.equal(cancelled.confirmed, false);
   assert.equal(f.read().actions.length, 0);
+});
+
+test("cancellation stays unconfirmed until hc returns an owned finished terminal", async (t) => {
+  for (const killReply of ["live", "foreign"] as const) {
+    const f = await setup(t);
+    const run = await f.launch();
+    f.write({ ...f.read(), killReply });
+    const cancelled = await f.host.cancel(run.id);
+    assert.equal(cancelled.confirmed, false);
+    assert.notEqual(cancelled.run.phase, "finished");
+    assert.match(cancelled.run.problem ?? "", /not yet confirmed|unconfirmed/);
+    assert.equal(f.results.length, 0);
+
+    const state = f.read();
+    delete state.killReply;
+    f.write(state);
+    await f.wait(() => f.results.length === 1);
+    assert.equal(f.results[0]!.result.outcome, "cancelled");
+    const actions = f.read().actions;
+    assert.ok(actions.length >= 2);
+    assert.ok(actions.every((action) => action.cancelled === true));
+    await f.host.shutdown(true);
+  }
 });
 
 test("zero exit without a result fails rather than inventing success", async (t) => {
