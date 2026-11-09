@@ -1,0 +1,46 @@
+{
+  "name": "pi-herdr-core",
+  "version": "0.1.0-dev.0",
+  "description": "Interactive asynchronous Pi agents in named herdr-core terminals",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "herdr-core",
+    "subagents"
+  ],
+  "files": [
+    "src/",
+    "README.md",
+    "PROPOSAL.md",
+    "LICENSE"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/extension.ts"
+    ]
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "test:integration": "node --test test/integration/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write src test package.json tsconfig.json README.md PROPOSAL.md",
+    "format:check": "prettier --check src test package.json tsconfig.json README.md PROPOSAL.md",
+    "check": "npm run typecheck && npm test && npm run format:check"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@types/node": "24.10.1",
+    "prettier": "3.6.2",
+    "typebox": "1.4.6",
+    "typescript": "5.9.3"
+  }
+}
