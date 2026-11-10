@@ -20,6 +20,20 @@ MCP servers stay available. Do not load this alongside `pi-herdr-agents`; their
 tool names overlap. If your wrapper explicitly loads the old host, remove that
 entry first (`--no-extensions` does not override it).
 
+For [pi.nix](https://github.com/lukasl-dev/pi.nix), add a flake input:
+
+```nix
+inputs.pi-herdr-core.url = "github:lukasl-dev/pi-herdr-core";
+```
+
+Then include its entry point in your agent's `extensions` list:
+
+```nix
+extensions = [
+  "${inputs.pi-herdr-core.packages.${pkgs.stdenv.hostPlatform.system}.default}/src/extension.ts"
+];
+```
+
 ## Delegation
 
 Ask Pi to delegate a bounded task. The model-facing tool call looks like:
@@ -36,12 +50,12 @@ the parent's working directory, model and thinking level. Launch returns a name,
 run ID and terminal address—not the answer. The answer triggers a parent
 follow-up turn when ready; no polling needed.
 
-| Tool                            | Purpose                               |
-| ------------------------------- | ------------------------------------- |
-| `subagent`                      | Launch a task.                        |
-| `subagent_interrupt({ target })` | Stop the current turn; keep Pi open.   |
-| `subagent_cancel({ target })`    | Cancel the task and end its program.  |
-| `subagents_list({})`             | Inspect owned runs.                   |
+| Tool                             | Purpose                              |
+| -------------------------------- | ------------------------------------ |
+| `subagent`                       | Launch a task.                       |
+| `subagent_interrupt({ target })` | Stop the current turn; keep Pi open. |
+| `subagent_cancel({ target })`    | Cancel the task and end its program. |
+| `subagents_list({})`             | Inspect owned runs.                  |
 
 Targets are agent names or run IDs. For manual control:
 
@@ -69,31 +83,26 @@ No configuration is required. To customise, create
 }
 ```
 
-- **Naming:** `task` uses the supplied task label instead of a random name,
-  falling back to random when omitted. Names must be unique, 1–32 characters,
-  start with a lowercase letter or digit, and contain only `a-z`, `0-9`, `._-`.
-- **Prefix:** up to 12 characters from `a-z`, `0-9`, `-`, starting with a letter
-  or digit; for example, `pi-`.
-- **Placement:** `tabs` places each agent in the parent's Desktop space;
-  `background` skips Desktop placement. Without a Desktop space, agents remain
-  headless core terminals. Layout files are untouched. If tab naming fails while
-  Desktop is closed, open it and `/reload` to retry.
-- **Launcher:** `piCommand` is an executable/argument array. Use an absolute path
-  or add profile arguments to select another launcher.
+| Option              | Choices                                                       |
+| ------------------- | ------------------------------------------------------------- |
+| `terminal.naming`   | `random`, or `task` to use the task label when supplied.      |
+| `terminal.prefix`   | Prepend a prefix such as `pi-`.                               |
+| `desktop.placement` | `tabs` in the parent's space, or `background` for no tab.     |
+| `piCommand`         | Launcher argv, e.g. `["/path/to/pi"]`; otherwise uses `PATH`. |
 
-Run `/reload` after changes. Unknown options are rejected.
+Desktop is optional; without a space, agents remain headless core terminals.
+Layout files are untouched. Run `/reload` after configuration changes or to retry
+tab naming after opening Desktop. Unknown options are rejected.
 
 ## Lifecycle and limits
 
 - `/reload` resumes supervision. Normal quit requests cancellation; an abrupt
   parent exit can leave orphaned work. Session/branch switching is blocked while
   runs are live or results await delivery.
-- Completion requires a child report and terminal exit, not just exit code zero.
-  Long answers are previewed with a link to the result artifact. Reports are
-  capped at 200,000 characters; full responses remain in child session files.
+- Answers are delivered after the child reports and exits. Long answers are
+  previewed with a path to the result artifact and child session.
 - Tasks, results and sessions are retained under the agent directory's
-  `herdr-core/runs/`. Treat these files as sensitive. Crash-proof exactly-once
-  result delivery is not guaranteed.
+  `herdr-core/runs/`. Treat these files as sensitive.
 - **Not a sandbox:** agents have your user permissions. Only owned terminals are
   controlled, and detached processes can survive cancellation.
 - Early release: no roles, worktrees, persistent specialists, context forks or
